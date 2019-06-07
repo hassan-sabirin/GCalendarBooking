@@ -1,0 +1,81 @@
+# Mostly based on google calendar API example: https://developers.google.com/calendar/quickstart/python
+
+from __future__ import print_function
+import datetime
+import pickle
+import os.path
+from googleapiclient.discovery import build
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+import dateutil.parser
+from datetime import timedelta
+import csv
+
+******************************************************
+######################################################
+# MODIFY THESE VALUES TO THE REQUIRED REPORT RANGE !##
+timeMax='2019-05-26T0:00:00-00:00'                  ##
+timeMin='2019-05-04T0:00:00-00:00'                  ##
+######################################################
+******************************************************
+
+# If modifying these scopes, delete the file token.pickle.
+SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
+import re
+def getMaxNumFromStr( string ):
+    try:
+        nums = [ int(num) for num in re.findall('[0-9]+', string) ]
+        #print( nums )
+        return max(nums)
+    except:
+        #print( string, type(string) )
+        return 0
+
+def main():
+    """Shows basic usage of the Google Calendar API.
+    Prints the start and name of the next 10 events on the user's calendar.
+    """
+    creds = None
+    # The file token.pickle stores the user's access and refresh tokens, and is
+    # created automatically when the authorization flow completes for the first
+    # time.
+    if os.path.exists('token.pickle'):
+        with open('token.pickle', 'rb') as token:
+            creds = pickle.load(token)
+    # If there are no (valid) credentials available, let the user log in.
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                'credentials.json', SCOPES)
+            creds = flow.run_local_server()
+        # Save the credentials for the next run
+        with open('token.pickle', 'wb') as token:
+            pickle.dump(creds, token)
+
+    service = build('calendar', 'v3', credentials=creds)
+
+    # Call the Calendar API
+    now = datetime.datetime.utcnow().isoformat() + 'Z' # 'Z' indicates UTC time
+    print('Getting the upcoming 10 events')
+    events_result = service.events().list(calendarId='primary', timeMax=timeMax, timeMin=timeMin, singleEvents=True,
+                                        orderBy='startTime').execute()
+    events = events_result.get('items', [])
+    f = open('output.txt', 'w')
+	
+    writer  = csv.writer(f)
+    writer.writerow( [ 'Date', 'Title', 'In', 'Description', 'Hours', 'start', 'end' ])
+
+    if not events:
+        print('No upcoming events found.')
+    for event in events:
+        start_str = event['start'].get('dateTime', event['start'].get('date'))
+        end_str = event['end'].get('dateTime', event['end'].get('date'))
+        start_dt = dateutil.parser.parse( start_str )
+        end_dt = dateutil.parser.parse( end_str )
+        diff = ( end_dt - start_dt )
+        writer.writerow( [ start_str[0:10], '{} ({}-{})'.format( event['summary'], start_dt.strftime("%I:%M%p"), end_dt.strftime("%I:%M%p") ), getMaxNumFromStr( event.get('description','') ) ,event.get('description',''), round(diff/ timedelta (hours=1) ), start_str, end_str ])
+    f.close()
+if __name__ == '__main__':
+    main()
